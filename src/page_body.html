@@ -1,0 +1,154 @@
+<div class="wrap">
+  <div class="eyebrow">2X Interim template · Tools</div>
+  <h1>Deck Fixer<span class="dot">.</span></h1>
+  <p class="lead">Drop in 2X Interim decks or templates. You get back copies where every box can be clicked, moved, resized and deleted in PowerPoint. The slides look exactly the same.</p>
+
+  <div class="grid">
+    <main>
+      <label class="drop" id="drop" for="pick">
+        <input id="pick" type="file" accept=".pptx,.potx" multiple aria-label="Choose decks or templates to fix">
+        <div class="big">Drop decks here, or click to choose</div>
+        <div class="small">Fix several at once. Large decks take a few seconds.</div>
+        <div class="chip-row"><span class="chip">.pptx</span><span class="chip">.potx</span></div>
+      </label>
+
+      <div class="bar">
+        <h2 id="listTitle">Example result</h2>
+        <button id="saveAll" class="primary" hidden>Save all as .zip</button>
+      </div>
+      <div class="list" id="list">
+        <div class="row example" id="example">
+          <div class="name">2X_Template_Interim_v1_Sample.pptx</div>
+          <div class="right"><span class="pill ex">Example</span></div>
+          <div class="meta"><b>67</b> slides · <b>130</b> panels made editable · <b>41</b> numbers made deletable · <b>411</b> layout shapes made clickable · <b>250</b> short boxes given frames</div>
+        </div>
+      </div>
+      <p class="note" id="note" hidden></p>
+    </main>
+
+    <aside>
+      <section>
+        <h3>What it fixes</h3>
+        <ul class="fixes">
+          <li><span><b>Boxes you can't click.</b> Eyebrows, sources, labels and dates show a frame and can be moved and deleted.</span></li>
+          <li><span><b>Locked design shapes.</b> Card backgrounds, quote marks and other layout shapes become normal shapes on each slide.</span></li>
+          <li><span><b>Panels.</b> Card, step and stat panels can be selected, resized and deleted, also on slides added with New Slide.</span></li>
+          <li><span><b>Panel numbers.</b> Card, step and list numbers can be deleted. Blank numbers are filled in so they show when presenting.</span></li>
+          <li><span><b>Hidden boxes.</b> Small boxes stuck under bigger ones come to the front. Photos under overlays can be selected.</span></li>
+        </ul>
+        <p class="note">Agenda numbers stay fixed as part of the design.</p>
+      </section>
+      <section class="box">
+        <h3>How to use it</h3>
+        <ol class="steps">
+          <li>Close the deck in PowerPoint.</li>
+          <li>Drop it here and save the “(fixed)” copy.</li>
+          <li>Open it and check a slide or two.</li>
+          <li>Use it in place of the original. For SharePoint or OneDrive, upload it over the original; version history keeps the old one.</li>
+        </ol>
+      </section>
+      <section class="box private">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Files are fixed inside your browser. Nothing is uploaded, and your original file is never changed.</span>
+      </section>
+    </aside>
+  </div>
+  <footer>Works on decks and templates built on the 2X Interim template (v1). Safe to run more than once.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+/*FIXER*/
+</script>
+<script>
+(function () {
+  const list = document.getElementById('list'), note = document.getElementById('note'), saveAll = document.getElementById('saveAll');
+  const drop = document.getElementById('drop'), pick = document.getElementById('pick');
+  const done = []; // {name, data, ext}
+  let downloadsP = null;
+  function downloads() { if (!downloadsP) downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null); return downloadsP; }
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const mb = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+  function fixedName(name) { const i = name.lastIndexOf('.'); return name.slice(0, i) + ' (fixed)' + name.slice(i); }
+  function showNote(text, err) { note.textContent = text; note.classList.toggle('err', !!err); note.hidden = !text; }
+
+  function browserSave(filename, data) { // outside claude.ai (opened as a file or hosted page): a normal download
+    const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+    const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000); return true;
+  }
+  async function offer(filename, data) {
+    if (!(window.claude && window.claude.use)) return browserSave(filename, data);
+    const d = await downloads();
+    if (!d) { showNote('Saving isn’t available in this view. Open this page in claude.ai to save fixed files.', true); return false; }
+    try { await d.save({ filename, data }); showNote(''); return true; }
+    catch (e) {
+      const code = e && e.code;
+      if (code === 'declined') showNote('Save cancelled.');
+      else if (code === 'rate_limited') showNote('A save prompt is already open. Finish it, then try again.');
+      else if (code === 'too_large') showNote('That file is too large to save from here.', true);
+      else showNote('Saving isn’t available in this view. Open this page in claude.ai to save fixed files.', true);
+      return false;
+    }
+  }
+  async function zipOf(items) {
+    const z = new JSZip(); for (const it of items) z.file(it.name, it.data);
+    return z.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  }
+  async function saveOne(item) {
+    if (item.ext === 'potx') return offer(item.name.replace(/\.potx$/i, '.zip'), await zipOf([item]));
+    return offer(item.name, new Blob([item.data]));
+  }
+
+  function row(file) {
+    const ex = document.getElementById('example'); if (ex) { ex.remove(); document.getElementById('listTitle').textContent = 'Your files'; }
+    const el = document.createElement('div'); el.className = 'row';
+    el.innerHTML = '<div class="name"></div><div class="right"><span class="pill busy"><span class="spin"></span>Fixing</span></div><div class="meta"></div>';
+    el.querySelector('.name').textContent = file.name;
+    el.querySelector('.meta').textContent = mb(file.size);
+    list.prepend(el); return el;
+  }
+  function setState(el, cls, label, meta, onSave) {
+    const right = el.querySelector('.right'); right.innerHTML = '';
+    const p = document.createElement('span'); p.className = 'pill ' + cls; p.textContent = label; right.appendChild(p);
+    if (onSave) { const b = document.createElement('button'); b.textContent = 'Save'; b.addEventListener('click', async () => { b.disabled = true; await onSave(); b.disabled = false; }); right.appendChild(b); }
+    if (meta !== undefined) el.querySelector('.meta').innerHTML = meta;
+  }
+
+  async function handle(file) {
+    const el = row(file);
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!['pptx', 'potx'].includes(ext)) { setState(el, 'bad', 'Not a deck', 'Choose a .pptx deck or a .potx template.'); return; }
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const buf = await file.arrayBuffer();
+      const out = await TwoXFix.fixPackage(buf, { JSZip, DOMParser, XMLSerializer });
+      const r = out.report;
+      if (!r.interim) { setState(el, 'warn', 'Not a 2X Interim deck', 'This file isn’t built on the 2X Interim template, so it was left alone.'); return; }
+      const changes = r.panels + r.numbersMade + r.numbersFilled + r.artCopied + r.moved + r.overlays + r.textBoxes + r.grown;
+      const slides = r.slides ? '<b>' + r.slides + '</b> ' + (r.slides === 1 ? 'slide' : 'slides') : 'Template';
+      if (!changes) { setState(el, 'ok', 'Already fixed', slides + ' · nothing needed changing'); return; }
+      const parts = [slides];
+      if (r.panels) parts.push('<b>' + r.panels + '</b> panels made editable');
+      if (r.numbersMade) parts.push('<b>' + r.numbersMade + '</b> numbers made deletable');
+      if (r.numbersFilled) parts.push('<b>' + r.numbersFilled + '</b> blank numbers filled');
+      if (r.artCopied) parts.push('<b>' + r.artCopied + '</b> layout shapes made clickable');
+      if (r.textBoxes + r.grown) parts.push('<b>' + (r.textBoxes + r.grown) + '</b> short boxes given frames');
+      if (r.moved + r.overlays) parts.push('<b>' + (r.moved + r.overlays) + '</b> hidden boxes brought forward');
+      const item = { name: fixedName(file.name), data: out.data, ext };
+      done.push(item); saveAll.hidden = done.length < 2;
+      setState(el, 'ok', 'Fixed', parts.join(' · ') + (ext === 'potx' ? ' · saves as a .zip holding the template' : ''), () => saveOne(item));
+    } catch (e) {
+      console.error(e);
+      setState(el, 'bad', 'Couldn’t fix', 'This file couldn’t be read as a PowerPoint deck. If it opens in PowerPoint, save a copy there and try again.');
+    }
+  }
+  async function take(files) { showNote(''); for (const f of files) await handle(f); }
+
+  pick.addEventListener('change', () => { take(Array.from(pick.files)); pick.value = ''; });
+  ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files.length) take(Array.from(e.dataTransfer.files)); });
+  saveAll.addEventListener('click', async () => { saveAll.disabled = true; await offer('2X decks (fixed).zip', await zipOf(done)); saveAll.disabled = false; });
+})();
+</script>

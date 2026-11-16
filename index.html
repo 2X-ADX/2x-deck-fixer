@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>2X Deck Fixer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: a single working column (drop zone, results) with a quiet reference column beside it on wide screens. */
+:root {
+  --bg: #ffffff; --surface: #f6f6f5; --surface-2: #ececea; --line: #e2e1de;
+  --fg: #151515; --muted: #5c5b58; --faint: #8a8884;
+  --accent: #ff0f0f; --accent-ink: #c40000; --accent-soft: #fff0f0;
+  --ok: #0a7a52; --ok-soft: #e6f4ee; --warn: #8a5a00; --warn-soft: #fbf1dc; --bad: #b3261e; --bad-soft: #fbe9e7;
+  --font: "Inter", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151515; --surface: #1e1e1d; --surface-2: #272726; --line: #333331;
+  --fg: #f4f4f2; --muted: #b3b1ac; --faint: #8d8b86;
+  --accent: #ff3b3b; --accent-ink: #ff6b6b; --accent-soft: #2a1414;
+  --ok: #4fd1a1; --ok-soft: #12261f; --warn: #f2c063; --warn-soft: #2a2213; --bad: #ff8a80; --bad-soft: #2c1615;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #151515; --surface: #1e1e1d; --surface-2: #272726; --line: #333331;
+  --fg: #f4f4f2; --muted: #b3b1ac; --faint: #8d8b86;
+  --accent: #ff3b3b; --accent-ink: #ff6b6b; --accent-soft: #2a1414;
+  --ok: #4fd1a1; --ok-soft: #12261f; --warn: #f2c063; --warn-soft: #2a2213; --bad: #ff8a80; --bad-soft: #2c1615;
+  color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.08; letter-spacing: -.025em; font-weight: 800; margin: 10px 0 12px; text-wrap: balance; }
+h1 .dot { color: var(--accent); }
+.lead { color: var(--muted); max-width: 62ch; margin: 0; font-size: 16px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 40px; margin-top: 32px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+
+.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  text-align: center; padding: 40px 20px; border: 1.5px dashed var(--line); border-radius: var(--radius); background: var(--surface);
+  cursor: pointer; transition: border-color .15s, background .15s; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.drop .big { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.drop .small { color: var(--muted); font-size: 14px; }
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.chip { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 26px 0 10px; }
+.bar h2 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 600; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.row.example { background: var(--surface); border-style: dashed; }
+.name { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.meta { grid-column: 1 / -1; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; min-width: 0; }
+.meta b { color: var(--fg); font-weight: 600; }
+.right { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.busy { background: var(--surface-2); color: var(--muted); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.ex { background: var(--surface-2); color: var(--faint); }
+.spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--faint); border-right-color: transparent; border-radius: 50%;
+  animation: r .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+@keyframes r { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+button { font: inherit; font-weight: 600; font-size: 14px; border-radius: 10px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+button:hover { border-color: var(--fg); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+.note { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+.note.err { color: var(--bad); }
+
+aside { display: flex; flex-direction: column; gap: 22px; }
+aside h3 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.fixes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.fixes li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14px; }
+.fixes li::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); margin: 7px 0 0 4px; }
+.fixes b { font-weight: 600; }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.steps li::marker { color: var(--accent-ink); font-weight: 700; }
+.box { border-top: 1px solid var(--line); padding-top: 18px; }
+.private { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--muted); }
+.private svg { flex: none; margin-top: 2px; color: var(--ok); }
+footer { margin-top: 40px; font-size: 12.5px; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">2X Interim template · Tools</div>
+  <h1>Deck Fixer<span class="dot">.</span></h1>
+  <p class="lead">Drop in 2X Interim decks or templates. You get back copies where every box can be clicked, moved, resized and deleted in PowerPoint. The slides look exactly the same.</p>
+
+  <div class="grid">
+    <main>
+      <label class="drop" id="drop" for="pick">
+        <input id="pick" type="file" accept=".pptx,.potx" multiple aria-label="Choose decks or templates to fix">
+        <div class="big">Drop decks here, or click to choose</div>
+        <div class="small">Fix several at once. Large decks take a few seconds.</div>
+        <div class="chip-row"><span class="chip">.pptx</span><span class="chip">.potx</span></div>
+      </label>
+
+      <div class="bar">
+        <h2 id="listTitle">Example result</h2>
+        <button id="saveAll" class="primary" hidden>Save all as .zip</button>
+      </div>
+      <div class="list" id="list">
+        <div class="row example" id="example">
+          <div class="name">2X_Template_Interim_v1_Sample.pptx</div>
+          <div class="right"><span class="pill ex">Example</span></div>
+          <div class="meta"><b>67</b> slides · <b>130</b> panels made editable · <b>41</b> numbers made deletable · <b>411</b> layout shapes made clickable · <b>250</b> short boxes given frames</div>
+        </div>
+      </div>
+      <p class="note" id="note" hidden></p>
+    </main>
+
+    <aside>
+      <section>
+        <h3>What it fixes</h3>
+        <ul class="fixes">
+          <li><span><b>Boxes you can't click.</b> Eyebrows, sources, labels and dates show a frame and can be moved and deleted.</span></li>
+          <li><span><b>Locked design shapes.</b> Card backgrounds, quote marks and other layout shapes become normal shapes on each slide.</span></li>
+          <li><span><b>Panels.</b> Card, step and stat panels can be selected, resized and deleted, also on slides added with New Slide.</span></li>
+          <li><span><b>Panel numbers.</b> Card, step and list numbers can be deleted. Blank numbers are filled in so they show when presenting.</span></li>
+          <li><span><b>Hidden boxes.</b> Small boxes stuck under bigger ones come to the front. Photos under overlays can be selected.</span></li>
+        </ul>
+        <p class="note">Agenda numbers stay fixed as part of the design.</p>
+      </section>
+      <section class="box">
+        <h3>How to use it</h3>
+        <ol class="steps">
+          <li>Close the deck in PowerPoint.</li>
+          <li>Drop it here and save the “(fixed)” copy.</li>
+          <li>Open it and check a slide or two.</li>
+          <li>Use it in place of the original. For SharePoint or OneDrive, upload it over the original; version history keeps the old one.</li>
+        </ol>
+      </section>
+      <section class="box private">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Files are fixed inside your browser. Nothing is uploaded, and your original file is never changed.</span>
+      </section>
+    </aside>
+  </div>
+  <footer>Works on decks and templates built on the 2X Interim template (v1). Safe to run more than once.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+/* 2X Selection Fix: makes every box on 2X Interim slides clickable, movable and deletable in PowerPoint.
+   JavaScript port of fix_selection.py (2X Deck Kit). Runs in a browser or in Node (pass JSZip, DOMParser,
+   XMLSerializer). Usage: const out = await TwoXFix.fixPackage(arrayBuffer, env) -> {data: Uint8Array, report}. */
+(function (root) {
+  'use strict';
+  const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  const NS_P = 'http://schemas.openxmlformats.org/presentationml/2006/main';
+  const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const NS_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const RT = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
+  const ART_TAG = '2X layout artwork', TEXTBOX_TAG = '2X text box', NUMBER_TAG = '2X number';
+  const GAP = 45720, SHORT = Math.trunc(0.55 * 914400), TALL = Math.trunc(0.62 * 914400);
+  const LVLS = []; for (let i = 1; i <= 9; i++) LVLS.push('lvl' + i + 'pPr');
+  const SHAPE_TAGS = ['sp', 'pic', 'grpSp', 'cxnSp', 'graphicFrame', 'contentPart'];
+  // placeholder type codes as python-pptx reports them
+  const PH_TYPE = { title: 1, body: 2, ctrTitle: 3, subTitle: 4, obj: 7, chart: 8, clipArt: 9, media: 10, dgm: 11,
+    tbl: 12, sldNum: 13, hdr: 14, ftr: 15, dt: 16, pic: 18, sldImg: 101 };
+  const BASE_TYPE = { 2: 2, 8: 2, 9: 2, 3: 1, 11: 2, 16: 16, 15: 15, 10: 2, 7: 2, 18: 2, 13: 13, 4: 2, 12: 2, 1: 1 };
+  const NO_GROW = [13, 14, 18];
+
+  // ---------------------------------------------------------------- DOM helpers
+  const kids = (el) => { const o = []; if (!el) return o; for (let c = el.firstChild; c; c = c.nextSibling) if (c.nodeType === 1) o.push(c); return o; };
+  const ln = (el) => el.localName || (el.nodeName.indexOf(':') >= 0 ? el.nodeName.split(':')[1] : el.nodeName);
+  const isA = (el, ns, name) => el && el.nodeType === 1 && el.namespaceURI === ns && ln(el) === name;
+  const child = (el, ns, name) => { if (!el) return null; for (const c of kids(el)) if (isA(c, ns, name)) return c; return null; };
+  const path = (el, steps) => { let cur = el; for (const [ns, n] of steps) { cur = child(cur, ns, n); if (!cur) return null; } return cur; };
+  const desc = (el, ns, name) => { // first descendant (document order), not el itself
+    if (!el) return null;
+    for (const c of kids(el)) { if (isA(c, ns, name)) return c; const d = desc(c, ns, name); if (d) return d; }
+    return null;
+  };
+  const allDesc = (el, ns, name, out = []) => { for (const c of kids(el)) { if (isA(c, ns, name)) out.push(c); allDesc(c, ns, name, out); } return out; };
+  const iterAll = (el, out = []) => { out.push(el); for (const c of kids(el)) iterAll(c, out); return out; };
+  const mk = (doc, ns, q) => doc.createElementNS(ns, q);
+  const A = (doc, name, attrs) => { const e = mk(doc, NS_A, 'a:' + name); if (attrs) for (const k in attrs) e.setAttribute(k, String(attrs[k])); return e; };
+  const Pn = (doc, name, attrs) => { const e = mk(doc, NS_P, 'p:' + name); if (attrs) for (const k in attrs) e.setAttribute(k, String(attrs[k])); return e; };
+  const remove = (el) => { if (el && el.parentNode) el.parentNode.removeChild(el); };
+  const before = (ref, el) => ref.parentNode.insertBefore(el, ref);
+  const after = (ref, el) => ref.parentNode.insertBefore(el, ref.nextSibling);
+  const clone = (doc, el) => (el.ownerDocument === doc ? el.cloneNode(true) : doc.importNode(el, true));
+  const attr = (el, k) => (el && el.hasAttribute(k) ? el.getAttribute(k) : null);
+  const index = (el) => kids(el.parentNode).indexOf(el);
+  const replaceEl = (old, neu) => { old.parentNode.insertBefore(neu, old); remove(old); };
+
+  // ---------------------------------------------------------------- package model
+  function dirOf(p) { return p.substring(0, p.lastIndexOf('/') + 1); }
+  function resolve(base, target) {
+    if (target.startsWith('/')) return target.substring(1);
+    const parts = (dirOf(base) + target).split('/'); const out = [];
+    for (const s of parts) { if (s === '..') out.pop(); else if (s !== '.' && s !== '') out.push(s); }
+    return out.join('/');
+  }
+  function relPath(fromPart, toPart) {
+    const a = dirOf(fromPart).split('/').filter(Boolean), b = toPart.split('/');
+    let i = 0; while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+    return '../'.repeat(a.length - i) + b.slice(i).join('/');
+  }
+  function relsName(p) { return dirOf(p) + '_rels/' + p.substring(p.lastIndexOf('/') + 1) + '.rels'; }
+
+  class Pkg {
+    constructor(zip, env) { this.zip = zip; this.env = env; this.docs = {}; this.dirty = new Set(); this.decl = {}; }
+    async load(name) {
+      if (this.docs[name]) return this.docs[name];
+      const f = this.zip.file(name); if (!f) return null;
+      const txt = await f.async('string');
+      const m = txt.match(/^\s*<\?xml[^>]*\?>/); this.decl[name] = m ? m[0].trim() : null;
+      const doc = new this.env.DOMParser().parseFromString(txt, 'application/xml');
+      this.docs[name] = doc; return doc;
+    }
+    async rels(part) {
+      const name = relsName(part); let doc = await this.load(name);
+      if (!doc) {
+        doc = new this.env.DOMParser().parseFromString('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="' + NS_REL + '"/>', 'application/xml');
+        this.docs[name] = doc; this.decl[name] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+      }
+      const map = {};
+      for (const r of kids(doc.documentElement)) map[r.getAttribute('Id')] = { id: r.getAttribute('Id'), type: r.getAttribute('Type'), target: r.getAttribute('Target'), external: r.getAttribute('TargetMode') === 'External', abs: r.getAttribute('TargetMode') === 'External' ? null : resolve(part, r.getAttribute('Target')) };
+      return { doc, map, name };
+    }
+    async relateTo(part, abs, type, external) {
+      const R = await this.rels(part);
+      for (const id in R.map) { const r = R.map[id]; if (r.type === type && r.external === !!external && (external ? r.target === abs : r.abs === abs)) return id; }
+      let n = 1; const used = new Set(Object.keys(R.map)); while (used.has('rId' + n)) n++;
+      const id = 'rId' + n, el = R.doc.createElementNS(NS_REL, 'Relationship');
+      el.setAttribute('Id', id); el.setAttribute('Type', type); el.setAttribute('Target', external ? abs : relPath(part, abs));
+      if (external) el.setAttribute('TargetMode', 'External');
+      R.doc.documentElement.appendChild(el); this.dirty.add(R.name); return id;
+    }
+    async save() {
+      const ser = new this.env.XMLSerializer();
+      for (const name of this.dirty) {
+        let x = ser.serializeToString(this.docs[name]).replace(/^\s*<\?xml[^>]*\?>\s*/, '');
+        x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + x;
+        this.zip.file(name, x, { createFolders: false });
+      }
+      for (const n of Object.keys(this.zip.files)) if (this.zip.files[n].dir) delete this.zip.files[n];
+      return this.zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    }
+  }
+
+  // ---------------------------------------------------------------- shapes
+  // A "shape" wraps an spTree child element and knows its part (slide / layout / master).
+  function nv(el) { // the nvXxPr element
+    for (const c of kids(el)) if (ln(c).startsWith('nv') && c.namespaceURI === NS_P) return c;
+    return null;
+  }
+  function cNvPr(el) { const n = nv(el); return n ? child(n, NS_P, 'cNvPr') : null; }
+  function phEl(el) { const n = nv(el); const p = n ? child(n, NS_P, 'nvPr') : null; return p ? child(p, NS_P, 'ph') : null; }
+  function shapeName(el) { const c = cNvPr(el); return c ? (c.getAttribute('name') || '') : ''; }
+  function phType(el) { const p = phEl(el); const t = p ? attr(p, 'type') : null; return t ? (PH_TYPE[t] || 0) : 7; }
+  function phIdx(el) { const p = phEl(el); const i = p ? attr(p, 'idx') : null; return i ? parseInt(i, 10) : 0; }
+  function isSp(el) { return isA(el, NS_P, 'sp'); }
+  function isAutoShape(el) {
+    if (!isSp(el) || phEl(el)) return false;
+    const sp = child(el, NS_P, 'spPr'); if (!sp || !child(sp, NS_A, 'prstGeom')) return false;
+    const c = child(nv(el), NS_P, 'cNvSpPr'); return !(c && attr(c, 'txBox') === '1');
+  }
+  function textOf(el) {
+    const tb = child(el, NS_P, 'txBody'); if (!tb) return '';
+    return kids(tb).filter((p) => isA(p, NS_A, 'p')).map((p) => {
+      let s = ''; for (const n of iterAll(p)) { if (isA(n, NS_A, 't')) s += n.textContent; else if (isA(n, NS_A, 'br')) s += '\v'; }
+      return s;
+    }).join('\n');
+  }
+  function shapesOf(tree) { return kids(tree).filter((c) => c.namespaceURI === NS_P && SHAPE_TAGS.includes(ln(c))); }
+  function ownXfrm(el) {
+    if (isA(el, NS_P, 'graphicFrame')) return child(el, NS_P, 'xfrm');
+    if (isA(el, NS_P, 'grpSp')) return path(el, [[NS_P, 'grpSpPr'], [NS_A, 'xfrm']]);
+    return path(el, [[NS_P, 'spPr'], [NS_A, 'xfrm']]);
+  }
+
+  class Model {
+    constructor(pkg) { this.pkg = pkg; }
+    async init() {
+      const pkg = this.pkg;
+      const root = await pkg.rels('');
+      const main = Object.values(root.map).find((r) => r.type === RT + 'officeDocument');
+      this.presName = main.abs; this.pres = await pkg.load(this.presName);
+      const pr = await pkg.rels(this.presName);
+      const sz = desc(this.pres.documentElement, NS_P, 'sldSz'); this.slideH = parseInt(sz.getAttribute('cy'), 10);
+      this.masters = []; this.layouts = []; this.slides = [];
+      const mlist = child(this.pres.documentElement, NS_P, 'sldMasterIdLst');
+      for (const m of kids(mlist)) {
+        const name = pr.map[m.getAttributeNS(NS_R, 'id')].abs; const doc = await pkg.load(name);
+        const master = { name, doc, root: doc.documentElement, kind: 'master', layouts: [] };
+        const mr = await pkg.rels(name); master.rels = mr.map;
+        for (const l of kids(child(doc.documentElement, NS_P, 'sldLayoutIdLst'))) {
+          const lname = mr.map[l.getAttributeNS(NS_R, 'id')].abs; const ldoc = await pkg.load(lname);
+          const lay = { name: lname, doc: ldoc, root: ldoc.documentElement, kind: 'layout', master, rels: (await pkg.rels(lname)).map };
+          master.layouts.push(lay); this.layouts.push(lay);
+        }
+        this.masters.push(master);
+      }
+      const byName = {}; for (const l of this.layouts) byName[l.name] = l;
+      const slist = child(this.pres.documentElement, NS_P, 'sldIdLst');
+      for (const s of kids(slist)) {
+        const name = pr.map[s.getAttributeNS(NS_R, 'id')].abs; const doc = await pkg.load(name);
+        const sr = await pkg.rels(name);
+        const lrel = Object.values(sr.map).find((r) => r.type === RT + 'slideLayout');
+        this.slides.push({ name, doc, root: doc.documentElement, kind: 'slide', layout: byName[lrel.abs], rels: sr.map });
+      }
+      for (const p of [...this.masters, ...this.layouts, ...this.slides]) pkg.dirty.add(p.name);
+    }
+    tree(part) { return path(part.root, [[NS_P, 'cSld'], [NS_P, 'spTree']]); }
+    shapes(part) { return shapesOf(this.tree(part)).map((el) => ({ el, part })); }
+    placeholders(part) { return this.shapes(part).filter((s) => phEl(s.el)); }
+    layoutName(lay) { const c = child(lay.root, NS_P, 'cSld'); return c ? (c.getAttribute('name') || '') : ''; }
+    base(sh) { // python-pptx _base_placeholder
+      const { el, part } = sh;
+      if (part.kind === 'slide') { const idx = phIdx(el); return this.placeholders(part.layout).find((p) => phIdx(p.el) === idx) || null; }
+      if (part.kind === 'layout') {
+        const bt = BASE_TYPE[phType(el)]; if (bt === undefined) return null;
+        return this.placeholders(part.master).find((p) => phType(p.el) === bt) || null;
+      }
+      return null;
+    }
+    chain(sh) { const out = [sh]; let cur = sh; for (let i = 0; i < 3; i++) { cur = this.base(cur); if (!cur) break; out.push(cur); } return out; }
+    geom(sh) { // [left, top, width, height] with placeholder inheritance; null parts when missing
+      const g = [null, null, null, null];
+      const xf = ownXfrm(sh.el);
+      if (xf) {
+        const off = child(xf, NS_A, 'off'), ext = child(xf, NS_A, 'ext');
+        if (off) { g[0] = parseInt(off.getAttribute('x'), 10); g[1] = parseInt(off.getAttribute('y'), 10); }
+        if (ext) { g[2] = parseInt(ext.getAttribute('cx'), 10); g[3] = parseInt(ext.getAttribute('cy'), 10); }
+      }
+      if (g.includes(null) && phEl(sh.el)) {
+        const b = this.base(sh);
+        if (b) { const bg = this.geom(b); for (let i = 0; i < 4; i++) if (g[i] === null) g[i] = bg[i]; }
+      }
+      return g;
+    }
+    setGeom(sh, l, t, w, h) {
+      const doc = sh.el.ownerDocument; let sp = child(sh.el, NS_P, 'spPr');
+      if (!sp) { sp = Pn(doc, 'spPr'); const n = nv(sh.el); after(n, sp); }
+      let xf = child(sp, NS_A, 'xfrm');
+      if (!xf) { xf = A(doc, 'xfrm'); sp.insertBefore(xf, sp.firstChild); }
+      let off = child(xf, NS_A, 'off'), ext = child(xf, NS_A, 'ext');
+      if (!off) { off = A(doc, 'off'); xf.insertBefore(off, xf.firstChild); }
+      if (!ext) { ext = A(doc, 'ext'); after(off, ext); }
+      off.setAttribute('x', String(l)); off.setAttribute('y', String(t)); ext.setAttribute('cx', String(w)); ext.setAttribute('cy', String(h));
+    }
+  }
+
+  // ---------------------------------------------------------------- 1. stacking / overlays
+  function box(m, sh) { const [l, t, w, h] = m.geom(sh); if (l === null || w === null || t === null || h === null) return null; return [l, t, l + w, t + h]; }
+  function covered(s, b) {
+    const w = Math.min(s[2], b[2]) - Math.max(s[0], b[0]), h = Math.min(s[3], b[3]) - Math.max(s[1], b[1]);
+    const area = (s[2] - s[0]) * (s[3] - s[1]); return area > 0 && Math.max(0, w) * Math.max(0, h) >= 0.5 * area;
+  }
+  function wordy(el) { return isSp(el) && (!!phEl(el) || !!textOf(el).trim()); }
+  function artKind(el) { // python-pptx shape types 1 autoshape, 5 freeform, 9 line, 13 picture
+    if (phEl(el)) return 0;
+    if (isA(el, NS_P, 'cxnSp')) return 9;
+    if (isA(el, NS_P, 'pic')) return 13;
+    if (!isSp(el)) return 0;
+    const c = child(nv(el), NS_P, 'cNvSpPr'); if (c && attr(c, 'txBox') === '1') return 17;
+    const sp = child(el, NS_P, 'spPr'); if (sp && child(sp, NS_A, 'custGeom')) return 5;
+    return isAutoShape(el) ? 1 : 0;
+  }
+  function textOverArt(m, part) {
+    let moved = 0;
+    for (let it = 0; it < 50; it++) {
+      const items = m.shapes(part).map((sh) => [sh, box(m, sh)]); let change = false;
+      for (let j = 0; j < items.length && !change; j++) {
+        const [txt, tb] = items[j]; if (!tb || !wordy(txt.el)) continue;
+        for (const [art, ab] of items.slice(j + 1)) {
+          if (!ab || phEl(art.el) || wordy(art.el) || ![1, 5, 9, 13].includes(artKind(art.el))) continue;
+          if (covered(tb, ab)) { before(txt.el, art.el); moved++; change = true; break; }
+        }
+      }
+      if (!change) break;
+    }
+    return moved;
+  }
+  function fixTree(m, part) {
+    let moved = 0;
+    for (let it = 0; it < 20; it++) {
+      const items = m.shapes(part).map((sh) => [sh, box(m, sh)]); let change = false;
+      for (let j = 0; j < items.length && !change; j++) {
+        const [low, lb] = items[j]; if (!lb || !wordy(low.el)) continue;
+        const la = (lb[2] - lb[0]) * (lb[3] - lb[1]);
+        for (const [high, hb] of items.slice(j + 1)) {
+          if (!hb || !isSp(high.el)) continue;
+          const ha = (hb[2] - hb[0]) * (hb[3] - hb[1]);
+          if (ha > la && covered(lb, hb)) { after(high.el, low.el); moved++; change = true; break; }
+        }
+      }
+      if (!change) break;
+    }
+    return moved;
+  }
+  function unclickOverlays(m, part) {
+    let n = 0;
+    for (const sh of m.shapes(part)) {
+      if (shapeName(sh.el) !== 'Photo overlay') continue;
+      const c = desc(sh.el, NS_P, 'cNvSpPr'); if (!c) continue;
+      let lk = child(c, NS_A, 'spLocks'); if (!lk) { lk = A(sh.el.ownerDocument, 'spLocks'); c.appendChild(lk); }
+      if (lk.getAttribute('noSelect') !== '1') { lk.setAttribute('noSelect', '1'); n++; }
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------------- 3. detach layout artwork onto slides
+  async function copyArt(m, src, slide, ref) {
+    let n = 0; const doc = slide.doc;
+    for (const el of kids(m.tree(src))) {
+      if (el.namespaceURI !== NS_P || !['sp', 'pic', 'grpSp', 'cxnSp', 'graphicFrame'].includes(ln(el))) continue;
+      if (desc(el, NS_P, 'ph')) continue;
+      const neu = clone(doc, el);
+      for (const node of iterAll(neu)) {
+        for (const a of ['embed', 'link', 'id']) {
+          if (!node.hasAttributeNS(NS_R, a)) continue;
+          const rid = node.getAttributeNS(NS_R, a), rel = src.rels[rid]; if (!rel) continue;
+          const nid = await m.pkg.relateTo(slide.name, rel.external ? rel.target : rel.abs, rel.type, rel.external);
+          node.setAttributeNS(NS_R, 'r:' + a, nid);
+        }
+      }
+      const c = desc(neu, NS_P, 'cNvPr') || (isA(neu, NS_P, 'cNvPr') ? neu : null);
+      if (c) c.setAttribute('descr', ART_TAG);
+      before(ref, neu); n++;
+    }
+    return n;
+  }
+  async function detach(m) {
+    let total = 0;
+    for (const s of m.slides) {
+      if (s.root.getAttribute('showMasterSp') === '0') continue;
+      const tree = m.tree(s); let first = kids(tree).find((e) => e.namespaceURI === NS_P && SHAPE_TAGS.includes(ln(e))); let temp = null;
+      if (!first) { first = temp = Pn(s.doc, 'sp'); tree.appendChild(first); }
+      const lay = s.layout;
+      if (lay.root.getAttribute('showMasterSp') !== '0') total += await copyArt(m, lay.master, s, first);
+      total += await copyArt(m, lay, s, first);
+      if (temp) remove(temp);
+      s.root.setAttribute('showMasterSp', '0');
+    }
+    return total;
+  }
+
+  // ---------------------------------------------------------------- 4. titles over eyebrows
+  function anchorOf(m, sh) {
+    for (const s of m.chain(sh)) { const bp = desc(s.el, NS_A, 'bodyPr'); if (bp && attr(bp, 'anchor')) return bp.getAttribute('anchor'); }
+    return 't';
+  }
+  function untangleTitles(m, part) {
+    let n = 0;
+    const items = m.shapes(part).filter((sh) => isSp(sh.el) && m.geom(sh)[2]);
+    for (const t of items) {
+      if (!(phEl(t.el) && [1, 3].includes(phType(t.el)))) continue;
+      if (anchorOf(m, t) !== 'b') continue;
+      let [tl, tt, tw, th] = m.geom(t); const bottom = tt + th;
+      for (const e of items) {
+        const [el_, et, ew, eh] = m.geom(e); [tl, tt, tw, th] = m.geom(t);
+        if (e === t || eh >= th) continue;
+        const horiz = Math.min(el_ + ew, tl + tw) - Math.max(el_, tl);
+        if (horiz <= 0 || !(tt <= et + eh && et + eh <= bottom - 300000)) continue;
+        if (et + eh + GAP > tt) {
+          const nt = et + eh + GAP;
+          if (bottom - nt >= 400000) {
+            m.setGeom(t, tl, nt, tw, bottom - nt);
+            const tb = child(t.el, NS_P, 'txBody'); const bp = child(tb, NS_A, 'bodyPr');
+            for (const c of kids(bp)) if (['normAutofit', 'spAutoFit', 'noAutofit'].includes(ln(c)) && c.namespaceURI === NS_A) remove(c);
+            bp.appendChild(A(t.el.ownerDocument, 'noAutofit')); bp.setAttribute('anchor', 'b'); n++;
+          }
+        }
+      }
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------------- 5. short placeholders -> text boxes
+  const PPR_ORDER = ['lnSpc', 'spcBef', 'spcAft', 'buClrTx', 'buClr', 'buSzTx', 'buSzPct', 'buSzPts', 'buFontTx', 'buFont', 'buNone', 'buAutoNum', 'buChar', 'buBlip', 'tabLst', 'defRPr', 'extLst'];
+  function sortKids(el, keyFn) {
+    const ks = kids(el).map((c, i) => [keyFn(c), i, c]); ks.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    for (const [, , c] of ks) el.appendChild(c);
+  }
+  function mergePpr(doc, base, over) {
+    let out = base ? clone(doc, base) : null;
+    if (!over) return out;
+    if (!out) return clone(doc, over);
+    for (let i = 0; i < over.attributes.length; i++) { const a = over.attributes[i]; if (!a.name.startsWith('xmlns')) out.setAttribute(a.name, a.value); }
+    const groups = [['buNone', 'buAutoNum', 'buChar', 'buBlip'], ['buClrTx', 'buClr'], ['buSzTx', 'buSzPct', 'buSzPts'], ['buFontTx', 'buFont']];
+    for (const g of groups) if (g.some((x) => child(over, NS_A, x))) for (const x of g) for (const e of kids(out)) if (isA(e, NS_A, x)) remove(e);
+    for (const ch of kids(over)) {
+      const name = ln(ch), old = child(out, NS_A, name);
+      if (name === 'defRPr' && old) replaceEl(old, mergePpr(doc, old, ch));
+      else if (old) replaceEl(old, clone(doc, ch));
+      else out.appendChild(clone(doc, ch));
+    }
+    sortKids(out, (e) => { const i = PPR_ORDER.indexOf(ln(e)); return i < 0 ? 99 : i; });
+    return out;
+  }
+  function effectiveText(m, sh, master) {
+    const doc = sh.el.ownerDocument;
+    const kind = [1, 3].includes(phType(sh.el)) ? 'titleStyle' : 'bodyStyle';
+    const txs = desc(master.root, NS_P, 'txStyles'); const tx = txs ? child(txs, NS_P, kind) : null;
+    const levels = {}; for (const lv of LVLS) levels[lv] = tx ? child(tx, NS_A, lv) : null;
+    let body = null;
+    for (const s of m.chain(sh).reverse()) {
+      const tb = child(s.el, NS_P, 'txBody'); if (!tb) continue;
+      const bp = child(tb, NS_A, 'bodyPr');
+      if (bp) {
+        if (!body) body = clone(doc, bp);
+        else {
+          for (let i = 0; i < bp.attributes.length; i++) { const a = bp.attributes[i]; if (!a.name.startsWith('xmlns')) body.setAttribute(a.name, a.value); }
+          const fits = kids(bp).filter((c) => ['noAutofit', 'normAutofit', 'spAutoFit'].includes(ln(c)));
+          if (fits.length) { for (const c of kids(body)) if (['noAutofit', 'normAutofit', 'spAutoFit'].includes(ln(c))) remove(c); body.appendChild(clone(doc, fits[0])); }
+        }
+      }
+      const ls = child(tb, NS_A, 'lstStyle');
+      if (ls) for (const lv of LVLS) { const o = child(ls, NS_A, lv); if (o) levels[lv] = mergePpr(doc, levels[lv], o); }
+    }
+    const lst = A(doc, 'lstStyle');
+    for (const lv of LVLS) if (levels[lv]) { let e = clone(doc, levels[lv]); if (ln(e) !== lv) { const r = A(doc, lv); for (let i = 0; i < e.attributes.length; i++) r.setAttribute(e.attributes[i].name, e.attributes[i].value); for (const c of kids(e)) r.appendChild(c); e = r; } lst.appendChild(e); }
+    if (!body) body = A(doc, 'bodyPr');
+    for (const c of kids(body)) if (['normAutofit', 'spAutoFit'].includes(ln(c))) remove(c);
+    if (!child(body, NS_A, 'noAutofit')) body.appendChild(A(doc, 'noAutofit'));
+    return [body, lst];
+  }
+  function toTextboxes(m, slide) {
+    let n = 0; const master = slide.layout.master;
+    for (const ph of m.placeholders(slide)) {
+      const t = phType(ph.el);
+      const [l, tp, w, h] = m.geom(ph);
+      if ([1, 3, 18].includes(t) || !isSp(ph.el) || h === null || h >= SHORT) continue;
+      if (!textOf(ph.el).trim()) continue;
+      const doc = slide.doc;
+      const [body, lst] = effectiveText(m, ph, master);
+      const groups = [['prstGeom', 'custGeom'], ['noFill', 'solidFill', 'gradFill', 'blipFill', 'pattFill', 'grpFill'], ['ln'], ['effectLst', 'effectDag'], ['scene3d'], ['sp3d']];
+      const chain = m.chain(ph); const chosen = [];
+      for (const g of groups) {
+        let pick = null;
+        for (const s of chain) {
+          const ssp = child(s.el, NS_P, 'spPr'); if (!ssp) continue;
+          const hit = kids(ssp).filter((k) => g.includes(ln(k)));
+          if (hit.length) { pick = clone(doc, hit[0]); break; }
+        }
+        if (!pick && g[0] === 'prstGeom') { pick = A(doc, 'prstGeom', { prst: 'rect' }); pick.appendChild(A(doc, 'avLst')); }
+        if (!pick && g[0] === 'noFill') pick = A(doc, 'noFill');
+        if (pick) chosen.push(pick);
+      }
+      let style = null;
+      if (!child(ph.el, NS_P, 'style')) for (const s of chain.slice(1)) { const st = child(s.el, NS_P, 'style'); if (st) { style = clone(doc, st); break; } }
+      const el = ph.el, nvp = child(el, NS_P, 'nvSpPr'), nvpr = child(nvp, NS_P, 'nvPr'), pe = child(nvpr, NS_P, 'ph');
+      if (pe) remove(pe);
+      const c = child(nvp, NS_P, 'cNvSpPr'); for (const k of kids(c)) remove(k); c.setAttribute('txBox', '1');
+      child(nvp, NS_P, 'cNvPr').setAttribute('descr', TEXTBOX_TAG);
+      const sp = child(el, NS_P, 'spPr'); for (const k of kids(sp)) remove(k);
+      const xf = A(doc, 'xfrm'); xf.appendChild(A(doc, 'off', { x: l, y: tp })); xf.appendChild(A(doc, 'ext', { cx: w, cy: h })); sp.appendChild(xf);
+      for (const k of chosen) sp.appendChild(k);
+      if (style) before(child(el, NS_P, 'txBody'), style);
+      const tb = child(el, NS_P, 'txBody'); const oldBp = child(tb, NS_A, 'bodyPr'), oldLs = child(tb, NS_A, 'lstStyle');
+      if (oldBp) replaceEl(oldBp, body); else tb.insertBefore(body, tb.firstChild);
+      if (oldLs) replaceEl(oldLs, lst); else after(body, lst);
+      n++;
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------------- 6. grow short layout placeholders
+  function insets(m, sh) {
+    let t = 45720, b = 45720;
+    for (const s of m.chain(sh).reverse()) { const bp = path(s.el, [[NS_P, 'txBody'], [NS_A, 'bodyPr']]); if (bp) { if (attr(bp, 'tIns') !== null) t = parseInt(bp.getAttribute('tIns'), 10); if (attr(bp, 'bIns') !== null) b = parseInt(bp.getAttribute('bIns'), 10); } }
+    return [t, b];
+  }
+  function painted(m, sh) {
+    for (const s of m.chain(sh)) {
+      const sp = child(s.el, NS_P, 'spPr'); if (!sp) continue;
+      for (const k of kids(sp)) { const n = ln(k); if (['solidFill', 'gradFill', 'blipFill', 'pattFill'].includes(n)) return true; if (n === 'noFill') break; }
+      const l = child(sp, NS_A, 'ln'); if (l && !child(l, NS_A, 'noFill') && kids(l).length) return true;
+    }
+    return !!child(sh.el, NS_P, 'style');
+  }
+  function growShort(m, lay) {
+    const phs = m.placeholders(lay); const boxes = new Map();
+    for (const ph of phs) boxes.set(phIdx(ph.el), m.geom(ph));
+    const out = {};
+    for (const ph of phs) {
+      const idx = phIdx(ph.el); if (NO_GROW.includes(phType(ph.el)) || !boxes.has(idx)) continue;
+      const [l, t, w, h] = boxes.get(idx);
+      if ([l, t, w, h].includes(null) || h >= TALL || w <= 0 || painted(m, ph)) continue;
+      const need = TALL - h; let above = t, below = m.slideH - (t + h);
+      for (const [i2, [l2, t2, w2, h2]] of boxes) {
+        if (i2 === idx || [l2, t2, w2, h2].includes(null) || l2 >= l + w || l2 + w2 <= l) continue;
+        if (t2 + h2 <= t) above = Math.min(above, t - (t2 + h2) - GAP); else if (t2 >= t + h) below = Math.min(below, t2 - (t + h) - GAP);
+      }
+      above = Math.max(0, above); below = Math.max(0, below);
+      let up = Math.min(Math.floor(need / 2), above); const down = Math.min(need - up, below); up = Math.min(need - down, above);
+      if (up + down < need) {
+        up += need - up - down;
+        const tree = ph.el.parentNode, ext = child(tree, NS_P, 'extLst');
+        if (ext) before(ext, ph.el); else tree.appendChild(ph.el);
+      }
+      const [tins, bins] = insets(m, ph);
+      m.setGeom(ph, l, t - up, w, h + up + down);
+      const tb = child(ph.el, NS_P, 'txBody'); if (!tb) continue;
+      let bp = child(tb, NS_A, 'bodyPr'); if (!bp) { bp = A(lay.doc, 'bodyPr'); tb.insertBefore(bp, tb.firstChild); }
+      bp.setAttribute('tIns', String(tins + up)); bp.setAttribute('bIns', String(bins + down));
+      out[idx] = [up, down, tins, bins]; boxes.set(idx, [l, t - up, w, h + up + down]);
+    }
+    return out;
+  }
+  function followLayout(m, slide, grown) {
+    for (const ph of m.placeholders(slide)) {
+      const idx = phIdx(ph.el); if (!(idx in grown)) continue;
+      const [up, down, t0, b0] = grown[idx];
+      const tb = child(ph.el, NS_P, 'txBody'); if (!tb) continue;
+      let bp = child(tb, NS_A, 'bodyPr'); if (!bp) { bp = A(slide.doc, 'bodyPr'); tb.insertBefore(bp, tb.firstChild); }
+      if (path(ph.el, [[NS_P, 'spPr'], [NS_A, 'xfrm']])) {
+        if (attr(bp, 'tIns') === null) bp.setAttribute('tIns', String(t0));
+        if (attr(bp, 'bIns') === null) bp.setAttribute('bIns', String(b0));
+        continue;
+      }
+      if (attr(bp, 'tIns') !== null) bp.setAttribute('tIns', String(parseInt(bp.getAttribute('tIns'), 10) + up));
+      if (attr(bp, 'bIns') !== null) bp.setAttribute('bIns', String(parseInt(bp.getAttribute('bIns'), 10) + down));
+    }
+  }
+
+  // ---------------------------------------------------------------- 7. panels become their body box's shape
+  function allInsets(m, sh) {
+    const ins = { lIns: 91440, tIns: 45720, rIns: 91440, bIns: 45720 };
+    for (const s of m.chain(sh).reverse()) { const bp = path(s.el, [[NS_P, 'txBody'], [NS_A, 'bodyPr']]); if (bp) for (const k in ins) if (attr(bp, k) !== null) ins[k] = parseInt(bp.getAttribute(k), 10); }
+    return ins;
+  }
+  function pin(sph, bx, ins) {
+    const el = sph.el, doc = el.ownerDocument; let sp = child(el, NS_P, 'spPr');
+    if (!child(sp, NS_A, 'xfrm')) { const [l, t, w, h] = bx; const xf = A(doc, 'xfrm'); xf.appendChild(A(doc, 'off', { x: l, y: t })); xf.appendChild(A(doc, 'ext', { cx: w, cy: h })); sp.insertBefore(xf, sp.firstChild); }
+    for (const k of kids(sp)) if (['prstGeom', 'custGeom', 'noFill', 'solidFill', 'gradFill', 'blipFill', 'pattFill', 'ln'].includes(ln(k))) remove(k);
+    const g = A(doc, 'prstGeom', { prst: 'rect' }); g.appendChild(A(doc, 'avLst')); sp.appendChild(g);
+    sp.appendChild(A(doc, 'noFill')); const l2 = A(doc, 'ln'); l2.appendChild(A(doc, 'noFill')); sp.appendChild(l2);
+    const tb = child(el, NS_P, 'txBody');
+    if (tb) { let bp = child(tb, NS_A, 'bodyPr'); if (!bp) { bp = A(doc, 'bodyPr'); tb.insertBefore(bp, tb.firstChild); } for (const k in ins) if (attr(bp, k) === null) bp.setAttribute(k, String(ins[k])); }
+    const st = child(el, NS_P, 'style'); if (st) remove(st);
+  }
+  function panelize(m) {
+    let done = 0;
+    for (const lay of m.layouts) {
+      const jobs = [], taken = new Set();
+      for (const sh of m.shapes(lay)) {
+        if (phEl(sh.el) || !isAutoShape(sh.el) || !shapeName(sh.el).endsWith('_Bg')) continue;
+        const [pl, pt, pw, ph_] = m.geom(sh); let best = null;
+        for (const cand of m.placeholders(lay)) {
+          const idx = phIdx(cand.el);
+          if (taken.has(idx) || NO_GROW.includes(phType(cand.el)) || !isSp(cand.el) || painted(m, cand)) continue;
+          const [cl, ct, cw, chh] = m.geom(cand);
+          if ([cl, ct, cw, chh].includes(null) || !(pl <= cl && pt <= ct && cl + cw <= pl + pw && ct + chh <= pt + ph_)) continue;
+          const nm = shapeName(cand.el);
+          const rank = [/(Body|Text|Bio|Note)$/.test(nm) ? 0 : /Value$/.test(nm) ? 1 : 2, -(cw * chh)];
+          if (!best || rank[0] < best[0][0] || (rank[0] === best[0][0] && rank[1] < best[0][1])) best = [rank, cand];
+        }
+        if (!best) continue;
+        const host = best[1]; taken.add(phIdx(host.el));
+        jobs.push([sh, host, [pl, pt, pw, ph_], m.geom(host)]);
+      }
+      if (!jobs.length) continue;
+      const users = m.slides.filter((s) => s.layout === lay);
+      for (const [art, host, pb, hb] of jobs) {
+        const idx = phIdx(host.el), ins = allInsets(m, host);
+        const inside = new Set(m.placeholders(lay).filter((p2) => {
+          const [x, y, w, h] = m.geom(p2); return phIdx(p2.el) !== idx && x !== null && pb[0] <= x && pb[1] <= y && x + w <= pb[0] + pb[2] && y + h <= pb[1] + pb[3];
+        }).map((p2) => phIdx(p2.el)));
+        for (const s of users) {
+          const mine = m.placeholders(s).filter((p) => phIdx(p.el) === idx); if (!mine.length) continue;
+          if (s.root.getAttribute('showMasterSp') === '0') { pin(mine[0], hb, ins); continue; }
+          const el = mine[0].el; const sibs = m.placeholders(s).filter((p) => inside.has(phIdx(p.el))).map((p) => p.el);
+          const first = [...sibs, el].sort((a, b) => index(a) - index(b))[0];
+          if (first !== el) before(first, el);
+        }
+        let neu = { lIns: ins.lIns + hb[0] - pb[0], tIns: ins.tIns + hb[1] - pb[1], rIns: ins.rIns + (pb[0] + pb[2]) - (hb[0] + hb[2]), bIns: ins.bIns + (pb[1] + pb[3]) - (hb[1] + hb[3]) };
+        const g = path(art.el, [[NS_P, 'spPr'], [NS_A, 'prstGeom']]);
+        if (g && g.getAttribute('prst') === 'roundRect') {
+          const gd = path(g, [[NS_A, 'avLst'], [NS_A, 'gd']]);
+          const adj = gd ? parseInt(gd.getAttribute('fmla').trim().split(/\s+/).pop(), 10) : 16667;
+          const cut = Math.trunc(adj / 100000 * Math.min(pb[2], pb[3]) * 0.29289);
+          for (const k in neu) neu[k] = Math.max(0, neu[k] - cut);
+        }
+        const hel = host.el, doc = lay.doc; const sp = child(hel, NS_P, 'spPr'); for (const k of kids(sp)) remove(k);
+        const xf = A(doc, 'xfrm'); xf.appendChild(A(doc, 'off', { x: pb[0], y: pb[1] })); xf.appendChild(A(doc, 'ext', { cx: pb[2], cy: pb[3] })); sp.appendChild(xf);
+        for (const k of kids(child(art.el, NS_P, 'spPr'))) if (ln(k) !== 'xfrm') sp.appendChild(clone(doc, k));
+        const ast = child(art.el, NS_P, 'style'); if (ast && !child(hel, NS_P, 'style')) before(child(hel, NS_P, 'txBody'), clone(doc, ast));
+        const tb = child(hel, NS_P, 'txBody'); let bp = child(tb, NS_A, 'bodyPr'); if (!bp) { bp = A(doc, 'bodyPr'); tb.insertBefore(bp, tb.firstChild); }
+        for (const k in neu) bp.setAttribute(k, String(neu[k]));
+        before(art.el, hel); remove(art.el); done++;
+      }
+    }
+    return done;
+  }
+
+  // ---------------------------------------------------------------- 8. panel numbers become placeholders
+  const NUMBER_RE = /^((?:Card|Step|Item|Rung)\d+)_Number$/;
+  const RPR_ORDER = ['ln', 'noFill', 'solidFill', 'gradFill', 'blipFill', 'pattFill', 'grpFill', 'effectLst', 'effectDag', 'highlight', 'uLnTx', 'uLn', 'uFillTx', 'uFill', 'latin', 'ea', 'cs', 'sym', 'hlinkClick', 'hlinkMouseOver', 'rtl', 'extLst'];
+  function mergedPpr(m, art, doc) {
+    const base = path(m.pres.documentElement, [[NS_P, 'defaultTextStyle'], [NS_A, 'lvl1pPr']]);
+    const tb = child(art.el, NS_P, 'txBody'); const own = path(tb, [[NS_A, 'lstStyle'], [NS_A, 'lvl1pPr']]);
+    const p0 = child(tb, NS_A, 'p'); const ppr = p0 ? child(p0, NS_A, 'pPr') : null;
+    let r0 = null; if (p0) for (const r of kids(p0)) if (isA(r, NS_A, 'r')) { const rp = child(r, NS_A, 'rPr'); if (rp) { r0 = rp; break; } }
+    let out = base ? clone(doc, base) : A(doc, 'lvl1pPr');
+    for (const o of [own, ppr]) if (o) out = mergePpr(doc, out, o);
+    if (ln(out) !== 'lvl1pPr') { const r = A(doc, 'lvl1pPr'); for (let i = 0; i < out.attributes.length; i++) if (!out.attributes[i].name.startsWith('xmlns')) r.setAttribute(out.attributes[i].name, out.attributes[i].value); for (const c of kids(out)) r.appendChild(c); out = r; }
+    if (r0) {
+      let d = child(out, NS_A, 'defRPr'); if (!d) { d = A(doc, 'defRPr'); out.appendChild(d); }
+      for (let i = 0; i < r0.attributes.length; i++) { const a = r0.attributes[i]; if (a.name !== 'lang' && !a.name.startsWith('xmlns')) d.setAttribute(a.name, a.value); }
+      for (const c of kids(r0)) { for (const old of kids(d)) if (ln(old) === ln(c)) remove(old); d.appendChild(clone(doc, c)); }
+      sortKids(d, (c) => { const i = RPR_ORDER.indexOf(ln(c)); return i < 0 ? 99 : i; });
+    }
+    out.setAttribute('marL', attr(out, 'marL') ?? '0'); out.setAttribute('indent', attr(out, 'indent') ?? '0');
+    for (const k of ['lnSpc', 'spcBef', 'spcAft']) {
+      if (child(out, NS_A, k)) continue;
+      const e = A(doc, k); e.appendChild(A(doc, k === 'lnSpc' ? 'spcPct' : 'spcPts', { val: k === 'lnSpc' ? '100000' : '0' }));
+      const fr = child(out, NS_A, 'defRPr'); if (fr) before(fr, e); else out.appendChild(e);
+    }
+    if (!child(out, NS_A, 'buNone')) {
+      for (const b of kids(out)) if (ln(b).startsWith('bu')) remove(b);
+      const bn = A(doc, 'buNone'); const fr = child(out, NS_A, 'defRPr'); if (fr) before(fr, bn); else out.appendChild(bn);
+    }
+    const rank = { lnSpc: 0, spcBef: 1, spcAft: 2, tabLst: 4, defRPr: 5, extLst: 6 };
+    sortKids(out, (c) => (ln(c) in rank ? rank[ln(c)] : ln(c).startsWith('bu') ? 3 : 7));
+    return out;
+  }
+  function numberize(m) {
+    const made = {};
+    for (const lay of m.layouts) {
+      if (m.layoutName(lay).startsWith('Agenda')) continue;
+      const arts = new Map(); for (const sh of m.shapes(lay)) if (!phEl(sh.el)) arts.set(shapeName(sh.el), sh);
+      const used = m.placeholders(lay).map((p) => phIdx(p.el)); let nxt = Math.max(...used, 10) + 1;
+      for (const [name, art] of [...arts]) {
+        const mm = NUMBER_RE.exec(name || ''); if (!mm || !isSp(art.el) || !textOf(art.el).trim()) continue;
+        const text = textOf(art.el).trim(), doc = lay.doc, el = art.el, ph = clone(doc, el);
+        const nvp = child(ph, NS_P, 'nvSpPr'), cnv = child(nvp, NS_P, 'cNvSpPr');
+        while (cnv.attributes.length) cnv.removeAttribute(cnv.attributes[0].name);
+        if (!child(cnv, NS_A, 'spLocks')) cnv.appendChild(A(doc, 'spLocks', { noGrp: '1' }));
+        child(nvp, NS_P, 'cNvPr').setAttribute('descr', NUMBER_TAG);
+        const nvpr = child(nvp, NS_P, 'nvPr');
+        for (const a of [...Array.from(nvpr.attributes)]) if (!a.name.startsWith('xmlns')) nvpr.removeAttribute(a.name);
+        for (const c of kids(nvpr)) remove(c);
+        nvpr.appendChild(Pn(doc, 'ph', { type: 'body', sz: 'quarter', idx: String(nxt), hasCustomPrompt: '1' }));
+        const tb = child(ph, NS_P, 'txBody'); const ls = child(tb, NS_A, 'lstStyle'); for (const c of kids(ls)) remove(c);
+        ls.appendChild(mergedPpr(m, art, doc));
+        const badge = arts.get(mm[1] + '_Badge'); let anchorEl = el;
+        if (badge && isAutoShape(badge.el)) {
+          const sp = child(ph, NS_P, 'spPr'); for (const c of kids(sp)) remove(c);
+          for (const c of kids(child(badge.el, NS_P, 'spPr'))) sp.appendChild(clone(doc, c));
+          child(tb, NS_A, 'bodyPr').setAttribute('anchor', 'ctr'); anchorEl = badge.el;
+        }
+        before(anchorEl, ph); remove(el); if (anchorEl !== el) remove(anchorEl);
+        (made[lay.name] = made[lay.name] || {})[nxt] = text; nxt++;
+      }
+    }
+    return made;
+  }
+  function setText(el, text) {
+    const doc = el.ownerDocument, tb = child(el, NS_P, 'txBody');
+    for (const p of kids(tb)) if (isA(p, NS_A, 'p')) remove(p);
+    const p = A(doc, 'p'), r = A(doc, 'r'), t = A(doc, 't'); t.textContent = text; r.appendChild(t); p.appendChild(r); tb.appendChild(p);
+  }
+  function fillNumbers(m, made) {
+    let n = 0;
+    if (!made) {
+      made = {};
+      for (const lay of m.layouts) for (const ph of m.placeholders(lay)) {
+        const c = path(ph.el, [[NS_P, 'nvSpPr'], [NS_P, 'cNvPr']]);
+        if (c && c.getAttribute('descr') === NUMBER_TAG && isSp(ph.el) && textOf(ph.el).trim()) (made[lay.name] = made[lay.name] || {})[phIdx(ph.el)] = textOf(ph.el).trim();
+      }
+    }
+    for (const s of m.slides) {
+      const nums = made[s.layout.name]; if (!nums) continue;
+      const have = new Map(); for (const ph of m.placeholders(s)) have.set(phIdx(ph.el), ph);
+      for (const idx in nums) { const ph = have.get(parseInt(idx, 10)); if (!ph) continue; if (isSp(ph.el) && !textOf(ph.el).trim()) { setText(ph.el, nums[idx]); n++; } }
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------------- ids
+  function uniqueIds(rootEl) {
+    const seen = new Set(); let fixed = 0;
+    const nodes = allDesc(rootEl, NS_P, 'cNvPr');
+    let top = Math.max(1, ...nodes.map((n) => n.getAttribute('id') || '').filter((i) => /^\d+$/.test(i)).map((i) => parseInt(i, 10)));
+    const ordered = nodes.map((n, i) => [n.getAttribute('descr') === ART_TAG ? 1 : 0, i, n]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+    for (const n of ordered) { const i = n.getAttribute('id'); if (seen.has(i) || !/^\d+$/.test(i || '')) { top++; n.setAttribute('id', String(top)); fixed++; } seen.add(n.getAttribute('id')); }
+    return fixed;
+  }
+
+  // ---------------------------------------------------------------- main
+  async function fixPackage(data, env) {
+    const zip = await env.JSZip.loadAsync(data); const pkg = new Pkg(zip, env); const m = new Model(pkg); await m.init();
+    const isInterim = m.layouts.some((l) => /^(Cards_Numbered|IconRow|Cover_Hero|Divider_Section)/.test(m.layoutName(l)));
+    const report = { slides: m.slides.length, layouts: m.layouts.length, interim: isInterim };
+    // every existing slide first gets its own copy of the layout artwork, so converting layout panels and numbers
+    // into placeholders can't take anything away from it
+    report.artCopied = await detach(m);
+    report.panels = panelize(m);
+    report.numbersMade = Object.values(numberize(m)).reduce((a, o) => a + Object.keys(o).length, 0);
+    report.numbersFilled = fillNumbers(m);
+    let moved = 0, locked = 0, converted = 0;
+    for (const lay of m.layouts) { moved += untangleTitles(m, lay); moved += fixTree(m, lay); locked += unclickOverlays(m, lay); }
+    for (const s of m.slides) { converted += toTextboxes(m, s); moved += untangleTitles(m, s); moved += fixTree(m, s); locked += unclickOverlays(m, s); }
+    const grown = {}; let grew = 0;
+    for (const lay of m.layouts) { grown[lay.name] = growShort(m, lay); grew += Object.keys(grown[lay.name]).length; }
+    for (const s of m.slides) followLayout(m, s, grown[s.layout.name] || {});
+    for (const lay of m.layouts) moved += textOverArt(m, lay);
+    for (const mm of m.masters) uniqueIds(mm.root);
+    for (const lay of m.layouts) uniqueIds(lay.root);
+    for (const s of m.slides) uniqueIds(s.root);
+    Object.assign(report, { moved, overlays: locked, textBoxes: converted, grown: grew });
+    return { data: await pkg.save(), report };
+  }
+
+  const api = { fixPackage };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.TwoXFix = api;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+(function () {
+  const list = document.getElementById('list'), note = document.getElementById('note'), saveAll = document.getElementById('saveAll');
+  const drop = document.getElementById('drop'), pick = document.getElementById('pick');
+  const done = []; // {name, data, ext}
+  let downloadsP = null;
+  function downloads() { if (!downloadsP) downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null); return downloadsP; }
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const mb = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+  function fixedName(name) { const i = name.lastIndexOf('.'); return name.slice(0, i) + ' (fixed)' + name.slice(i); }
+  function showNote(text, err) { note.textContent = text; note.classList.toggle('err', !!err); note.hidden = !text; }
+
+  function browserSave(filename, data) { // outside claude.ai (opened as a file or hosted page): a normal download
+    const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+    const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000); return true;
+  }
+  async function offer(filename, data) {
+    if (!(window.claude && window.claude.use)) return browserSave(filename, data);
+    const d = await downloads();
+    if (!d) { showNote('Saving isn’t available in this view. Open this page in claude.ai to save fixed files.', true); return false; }
+    try { await d.save({ filename, data }); showNote(''); return true; }
+    catch (e) {
+      const code = e && e.code;
+      if (code === 'declined') showNote('Save cancelled.');
+      else if (code === 'rate_limited') showNote('A save prompt is already open. Finish it, then try again.');
+      else if (code === 'too_large') showNote('That file is too large to save from here.', true);
+      else showNote('Saving isn’t available in this view. Open this page in claude.ai to save fixed files.', true);
+      return false;
+    }
+  }
+  async function zipOf(items) {
+    const z = new JSZip(); for (const it of items) z.file(it.name, it.data);
+    return z.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  }
+  async function saveOne(item) {
+    if (item.ext === 'potx') return offer(item.name.replace(/\.potx$/i, '.zip'), await zipOf([item]));
+    return offer(item.name, new Blob([item.data]));
+  }
+
+  function row(file) {
+    const ex = document.getElementById('example'); if (ex) { ex.remove(); document.getElementById('listTitle').textContent = 'Your files'; }
+    const el = document.createElement('div'); el.className = 'row';
+    el.innerHTML = '<div class="name"></div><div class="right"><span class="pill busy"><span class="spin"></span>Fixing</span></div><div class="meta"></div>';
+    el.querySelector('.name').textContent = file.name;
+    el.querySelector('.meta').textContent = mb(file.size);
+    list.prepend(el); return el;
+  }
+  function setState(el, cls, label, meta, onSave) {
+    const right = el.querySelector('.right'); right.innerHTML = '';
+    const p = document.createElement('span'); p.className = 'pill ' + cls; p.textContent = label; right.appendChild(p);
+    if (onSave) { const b = document.createElement('button'); b.textContent = 'Save'; b.addEventListener('click', async () => { b.disabled = true; await onSave(); b.disabled = false; }); right.appendChild(b); }
+    if (meta !== undefined) el.querySelector('.meta').innerHTML = meta;
+  }
+
+  async function handle(file) {
+    const el = row(file);
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!['pptx', 'potx'].includes(ext)) { setState(el, 'bad', 'Not a deck', 'Choose a .pptx deck or a .potx template.'); return; }
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const buf = await file.arrayBuffer();
+      const out = await TwoXFix.fixPackage(buf, { JSZip, DOMParser, XMLSerializer });
+      const r = out.report;
+      if (!r.interim) { setState(el, 'warn', 'Not a 2X Interim deck', 'This file isn’t built on the 2X Interim template, so it was left alone.'); return; }
+      const changes = r.panels + r.numbersMade + r.numbersFilled + r.artCopied + r.moved + r.overlays + r.textBoxes + r.grown;
+      const slides = r.slides ? '<b>' + r.slides + '</b> ' + (r.slides === 1 ? 'slide' : 'slides') : 'Template';
+      if (!changes) { setState(el, 'ok', 'Already fixed', slides + ' · nothing needed changing'); return; }
+      const parts = [slides];
+      if (r.panels) parts.push('<b>' + r.panels + '</b> panels made editable');
+      if (r.numbersMade) parts.push('<b>' + r.numbersMade + '</b> numbers made deletable');
+      if (r.numbersFilled) parts.push('<b>' + r.numbersFilled + '</b> blank numbers filled');
+      if (r.artCopied) parts.push('<b>' + r.artCopied + '</b> layout shapes made clickable');
+      if (r.textBoxes + r.grown) parts.push('<b>' + (r.textBoxes + r.grown) + '</b> short boxes given frames');
+      if (r.moved + r.overlays) parts.push('<b>' + (r.moved + r.overlays) + '</b> hidden boxes brought forward');
+      const item = { name: fixedName(file.name), data: out.data, ext };
+      done.push(item); saveAll.hidden = done.length < 2;
+      setState(el, 'ok', 'Fixed', parts.join(' · ') + (ext === 'potx' ? ' · saves as a .zip holding the template' : ''), () => saveOne(item));
+    } catch (e) {
+      console.error(e);
+      setState(el, 'bad', 'Couldn’t fix', 'This file couldn’t be read as a PowerPoint deck. If it opens in PowerPoint, save a copy there and try again.');
+    }
+  }
+  async function take(files) { showNote(''); for (const f of files) await handle(f); }
+
+  pick.addEventListener('change', () => { take(Array.from(pick.files)); pick.value = ''; });
+  ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files.length) take(Array.from(e.dataTransfer.files)); });
+  saveAll.addEventListener('click', async () => { saveAll.disabled = true; await offer('2X decks (fixed).zip', await zipOf(done)); saveAll.disabled = false; });
+})();
+</script>
+
+</body>
+</html>

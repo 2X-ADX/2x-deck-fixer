@@ -1,0 +1,14 @@
+{
+  "name": "2x-deck-fixer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Makes every box on 2X Interim slides clickable, movable and deletable in PowerPoint. Runs in the browser.",
+  "scripts": {
+    "build": "python3 build.py",
+    "fix": "node test/run.js"
+  },
+  "devDependencies": {
+    "@xmldom/xmldom": "0.8.10",
+    "jszip": "3.10.1"
+  }
+}
