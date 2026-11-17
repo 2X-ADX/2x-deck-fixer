@@ -11,6 +11,7 @@
         <div class="small">Fix several at once. Large decks take a few seconds.</div>
         <div class="chip-row"><span class="chip">.pptx</span><span class="chip">.potx</span></div>
       </label>
+      <label class="opt"><input type="checkbox" id="clean"> <span><b>Clean up as well.</b> Remove pasted footers, a second footer logo, footer bits hidden behind full-screen video, and empty text boxes. Each removal is listed.</span></label>
 
       <div class="bar">
         <h2 id="listTitle">Example result</h2>
@@ -35,8 +36,9 @@
           <li><span><b>Panels.</b> Card, step and stat panels can be selected, resized and deleted, also on slides added with New Slide.</span></li>
           <li><span><b>Panel numbers.</b> Card, step and list numbers can be deleted. Blank numbers are filled in so they show when presenting.</span></li>
           <li><span><b>Hidden boxes.</b> Small boxes stuck under bigger ones come to the front. Photos under overlays can be selected.</span></li>
+          <li><span><b>Headers lined up.</b> Titles sit the same distance under the eyebrow on every slide, cover eyebrows match, and agenda numbers sit centred over their red stroke. New slides follow too.</span></li>
         </ul>
-        <p class="note">Agenda numbers stay fixed as part of the design.</p>
+        <p class="note">Agenda numbers and the footer brand line (Growth. Orchestrated. | 2X) stay fixed as part of the design.</p>
       </section>
       <section class="box">
         <h3>How to use it</h3>
@@ -63,7 +65,7 @@
 <script>
 (function () {
   const list = document.getElementById('list'), note = document.getElementById('note'), saveAll = document.getElementById('saveAll');
-  const drop = document.getElementById('drop'), pick = document.getElementById('pick');
+  const drop = document.getElementById('drop'), pick = document.getElementById('pick'), cleanBox = document.getElementById('clean');
   const done = []; // {name, data, ext}
   let downloadsP = null;
   function downloads() { if (!downloadsP) downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null); return downloadsP; }
@@ -122,10 +124,11 @@
     await new Promise((r) => setTimeout(r, 30));
     try {
       const buf = await file.arrayBuffer();
-      const out = await TwoXFix.fixPackage(buf, { JSZip, DOMParser, XMLSerializer });
+      const out = await TwoXFix.fixPackage(buf, { JSZip, DOMParser, XMLSerializer }, { clean: cleanBox.checked });
       const r = out.report;
       if (!r.interim) { setState(el, 'warn', 'Not a 2X Interim deck', 'This file isn’t built on the 2X Interim template, so it was left alone.'); return; }
-      const changes = r.panels + r.numbersMade + r.numbersFilled + r.artCopied + r.moved + r.overlays + r.textBoxes + r.grown;
+      const cleaned = r.cleaned || [];
+      const changes = cleaned.length + (r.tidied || 0) + r.panels + r.numbersMade + r.numbersFilled + r.artCopied + r.moved + r.overlays + r.textBoxes + r.grown + (r.footerLocked || 0);
       const slides = r.slides ? '<b>' + r.slides + '</b> ' + (r.slides === 1 ? 'slide' : 'slides') : 'Template';
       if (!changes) { setState(el, 'ok', 'Already fixed', slides + ' · nothing needed changing'); return; }
       const parts = [slides];
@@ -134,10 +137,20 @@
       if (r.numbersFilled) parts.push('<b>' + r.numbersFilled + '</b> blank numbers filled');
       if (r.artCopied) parts.push('<b>' + r.artCopied + '</b> layout shapes made clickable');
       if (r.textBoxes + r.grown) parts.push('<b>' + (r.textBoxes + r.grown) + '</b> short boxes given frames');
+      if (r.tidied) parts.push('<b>' + r.tidied + '</b> headers lined up');
+      if (r.footerLocked) parts.push('footer and baton fixed on <b>' + r.footerLocked + '</b> slides');
       if (r.moved + r.overlays) parts.push('<b>' + (r.moved + r.overlays) + '</b> hidden boxes brought forward');
+      if (cleaned.length) parts.push('<b>' + cleaned.length + '</b> items cleaned up');
       const item = { name: fixedName(file.name), data: out.data, ext };
       done.push(item); saveAll.hidden = done.length < 2;
       setState(el, 'ok', 'Fixed', parts.join(' · ') + (ext === 'potx' ? ' · saves as a .zip holding the template' : ''), () => saveOne(item));
+      if (cleaned.length) {
+        const det = document.createElement('details'); det.className = 'log';
+        const sum = document.createElement('summary'); sum.textContent = 'What was cleaned up'; det.appendChild(sum);
+        const ul = document.createElement('ul');
+        for (const c of cleaned) { const li = document.createElement('li'); li.textContent = 'Slide ' + c.slide + ': ' + c.why + ' (“' + c.name + '”)'; ul.appendChild(li); }
+        det.appendChild(ul); el.appendChild(det);
+      }
     } catch (e) {
       console.error(e);
       setState(el, 'bad', 'Couldn’t fix', 'This file couldn’t be read as a PowerPoint deck. If it opens in PowerPoint, save a copy there and try again.');

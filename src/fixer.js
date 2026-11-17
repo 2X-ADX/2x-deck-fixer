@@ -137,7 +137,7 @@
       const main = Object.values(root.map).find((r) => r.type === RT + 'officeDocument');
       this.presName = main.abs; this.pres = await pkg.load(this.presName);
       const pr = await pkg.rels(this.presName);
-      const sz = desc(this.pres.documentElement, NS_P, 'sldSz'); this.slideH = parseInt(sz.getAttribute('cy'), 10);
+      const sz = desc(this.pres.documentElement, NS_P, 'sldSz'); this.slideH = parseInt(sz.getAttribute('cy'), 10); this.slideW = parseInt(sz.getAttribute('cx'), 10);
       this.masters = []; this.layouts = []; this.slides = [];
       const mlist = child(this.pres.documentElement, NS_P, 'sldMasterIdLst');
       for (const m of kids(mlist)) {
@@ -256,6 +256,24 @@
       const c = desc(sh.el, NS_P, 'cNvSpPr'); if (!c) continue;
       let lk = child(c, NS_A, 'spLocks'); if (!lk) { lk = A(sh.el.ownerDocument, 'spLocks'); c.appendChild(lk); }
       if (lk.getAttribute('noSelect') !== '1') { lk.setAttribute('noSelect', '1'); n++; }
+    }
+    return n;
+  }
+
+  // Brand artwork stays fixed on slides: the footer brand line ("Growth. Orchestrated." | 2X logo) and the baton
+  // watermark behind the title. The page number stays editable.
+  const FOOTER_FIXED = ['Tagline', 'Footer divider', '2X logo', 'Baton watermark'];
+  const LOCKS = { sp: ['cNvSpPr', 'spLocks', ['noGrp', 'noSelect', 'noRot', 'noMove', 'noResize', 'noTextEdit']],
+    pic: ['cNvPicPr', 'picLocks', ['noGrp', 'noSelect', 'noRot', 'noChangeAspect', 'noMove', 'noResize']],
+    cxnSp: ['cNvCxnSpPr', 'cxnSpLocks', ['noGrp', 'noSelect', 'noRot', 'noMove', 'noResize']] };
+  function lockFooter(m, part) {
+    let n = 0;
+    for (const sh of m.shapes(part)) {
+      const L = LOCKS[ln(sh.el)]; if (!L || !FOOTER_FIXED.includes(shapeName(sh.el))) continue;
+      const cp = cNvPr(sh.el); if (!cp || cp.getAttribute('descr') !== ART_TAG) continue;
+      const c = desc(sh.el, NS_P, L[0]); if (!c) continue;
+      let lk = child(c, NS_A, L[1]); if (!lk) { lk = A(sh.el.ownerDocument, L[1]); c.insertBefore(lk, c.firstChild); }
+      if (L[2].some((a) => lk.getAttribute(a) !== '1')) { for (const a of L[2]) lk.setAttribute(a, '1'); n++; }
     }
     return n;
   }
@@ -444,9 +462,10 @@
         if (t2 + h2 <= t) above = Math.min(above, t - (t2 + h2) - GAP); else if (t2 >= t + h) below = Math.min(below, t2 - (t + h) - GAP);
       }
       above = Math.max(0, above); below = Math.max(0, below);
-      let up = Math.min(Math.floor(need / 2), above); const down = Math.min(need - up, below); up = Math.min(need - down, above);
+      let up = Math.min(Math.floor(need / 2), above); let down = Math.min(need - up, below); up = Math.min(need - down, above);
       if (up + down < need) {
         up += need - up - down;
+        if (t - up < 0) { down += up - t; up = t; } // never past the top of the page
         const tree = ph.el.parentNode, ext = child(tree, NS_P, 'extLst');
         if (ext) before(ext, ph.el); else tree.appendChild(ph.el);
       }
@@ -640,7 +659,175 @@
   }
 
   // ---------------------------------------------------------------- main
-  async function fixPackage(data, env) {
+  // ---------------------------------------------------------------- header tidy; mirrors tidy.py
+  // Titles start 0.608 in from the top (0.29 in under the eyebrow's text), cover eyebrows sit the same distance
+  // above the cover title, agenda numbers sit centred over their red stroke on the item's text line. Title boxes keep
+  // a 0.62 in minimum (equal top/bottom insets) so PowerPoint for Mac still draws a selection frame.
+  const T_TOP = 555955, T_LINE = 491491, T_PAD = 37718, T_GAP_EB = 265176, T_MIN_H = 566928 - 2000, T_NEAR = 91440;
+  const T_E = 914400, T_UPM = 2048;
+  const T_W = {" ": 485, "!": 692, "\"": 1130, "#": 1329, "$": 1341, "%": 2080, "&": 1376, "'": 694, "(": 772, ")": 772, "*": 1145, "+": 1390, ",": 684, "-": 958, ".": 684, "/": 795, "0": 1381, "1": 883, "2": 1290, "3": 1322, "4": 1385, "5": 1309, "6": 1330, "7": 1191, "8": 1333, "9": 1330, ":": 684, ";": 702, "<": 1390, "=": 1390, ">": 1390, "?": 1146, "@": 2081, "A": 1529, "B": 1355, "C": 1515, "D": 1479, "E": 1244, "F": 1202, "G": 1537, "H": 1530, "I": 575, "J": 1197, "K": 1473, "L": 1158, "M": 1908, "N": 1561, "O": 1578, "P": 1327, "Q": 1591, "R": 1345, "S": 1341, "T": 1367, "U": 1499, "V": 1529, "W": 2125, "X": 1512, "Y": 1497, "Z": 1360, "[": 772, "\\": 795, "]": 772, "^": 997, "_": 975, "`": 748, "a": 1189, "b": 1291, "c": 1205, "d": 1291, "e": 1220, "f": 815, "g": 1294, "h": 1275, "i": 555, "j": 555, "k": 1188, "l": 555, "m": 1869, "n": 1275, "o": 1256, "p": 1291, "q": 1291, "r": 834, "s": 1147, "t": 750, "u": 1275, "v": 1228, "w": 1741, "x": 1188, "y": 1233, "z": 1173, "{": 960, "|": 761, "}": 960, "~": 1390, "’": 636, "‘": 636, "“": 1106, "”": 1089, "—": 2048, "–": 1024, "·": 684, "×": 1390, "…": 2052, "€": 1402, "£": 1308, "•": 971, "→": 1954};
+  const tW = (s, sz) => { let u = 0; for (const ch of s) u += (ch in T_W ? T_W[ch] : T_W['n']); return u * sz / T_UPM; };
+  function tLines(text, widthPt, sz) {
+    let n = 0;
+    for (const para of text.replace(/\v/g, '\n').split('\n')) {
+      n++; let cur = '';
+      for (const word of para.split(' ')) {
+        const t = cur ? cur + ' ' + word : word;
+        if (cur && tW(t, sz) > widthPt) { n++; cur = word; } else cur = t;
+      }
+    }
+    return n;
+  }
+  const fdiv = (a, b) => Math.floor(a / b);
+  const pyStrip2 = (t) => t.replace(/^\s+|\s+$/g, '');
+  const tChain = (m, sh) => (phEl(sh.el) ? m.chain(sh) : [sh]);   // python-pptx: only placeholders inherit
+  function tBp(m, sh, key, dflt) {
+    for (const c of tChain(m, sh)) { const b = desc(c.el, NS_A, 'bodyPr'); if (b && b.hasAttribute(key)) return b.getAttribute(key); }
+    return dflt;
+  }
+  function tSizeH(m, sh) { // size in hundredths of a point
+    const s = allDesc(sh.el, NS_A, 'rPr').filter((r) => r.hasAttribute('sz')).map((r) => parseInt(r.getAttribute('sz'), 10));
+    if (s.length) return Math.max(...s);
+    for (const c of tChain(m, sh)) {
+      const lv = allDesc(c.el, NS_A, 'lvl1pPr').find((x) => child(x, NS_A, 'defRPr'));
+      const d = lv ? child(lv, NS_A, 'defRPr') : null;
+      if (d && d.getAttribute('sz')) return parseInt(d.getAttribute('sz'), 10);
+    }
+    return 3200;
+  }
+  const tL = (szh) => fdiv(T_LINE * szh, 3200);
+  function tSetBox(m, sh, top, height, ins) {
+    const g = m.geom(sh); m.setGeom(sh, g[0], top, g[2], height);
+    const bp = child(child(sh.el, NS_P, 'txBody'), NS_A, 'bodyPr');
+    bp.setAttribute('tIns', String(ins)); bp.setAttribute('bIns', String(ins)); bp.setAttribute('anchor', 'b');
+  }
+  function tPin(m, sh) { const g = m.geom(sh); m.setGeom(sh, g[0], g[1], g[2], g[3]); }
+  const tTitle = (list) => list.find((x) => phEl(x.el) && [1, 3].includes(phType(x.el))) || null;
+  const tFirst = (m, t, n, L) => { const g = m.geom(t); return g[1] + g[3] - parseInt(tBp(m, t, 'bIns', 45720), 10) - n * L; };
+  const tPlace = (m, t, n, szh) => tSetBox(m, t, T_TOP - T_PAD, n * tL(szh) + 2 * T_PAD, T_PAD);
+
+  function tidyLayoutTitle(m, lay) {
+    const t = tTitle(m.placeholders(lay)); if (!t) return 0;
+    const g = m.geom(t); if (g[1] === null || tBp(m, t, 'anchor', 't') !== 'b') return 0;
+    const first = tFirst(m, t, 1, T_LINE);   // layout titles hold one line; the box may be taller
+    if (!(T_TOP - 228600 < first && first < T_TOP + 228600) || Math.abs(first - T_TOP) <= 2000) return 0;
+    tPlace(m, t, 1, 3200); return 1;
+  }
+  function tidySlideTitle(m, s) {
+    const shapes = m.shapes(s);
+    if (!shapes.some((x) => shapeName(x.el) === 'Baton watermark')) return 0;
+    const t = tTitle(shapes); if (!t || !child(t.el, NS_P, 'txBody')) return 0;
+    const g = m.geom(t); if (g[2] === null || g[1] === null) return 0;
+    const szh = tSizeH(m, t), L = tL(szh);
+    const width = (g[2] - parseInt(tBp(m, t, 'lIns', 91440), 10) - parseInt(tBp(m, t, 'rIns', 91440), 10)) / 12700;
+    const n = tLines(textOf(t.el), width, szh / 100);
+    if (tBp(m, t, 'anchor', 't') === 'b' && Math.abs(tFirst(m, t, n, L) - T_TOP) <= 2000 && g[3] >= T_MIN_H) return 0;
+    const below = shapes.filter((x) => x !== t && shapeName(x.el) !== 'Baton watermark').map((x) => m.geom(x)[1])
+      .filter((y) => y !== null && y > T_TOP + fdiv(T_LINE, 2));
+    if (below.length && T_TOP + n * L > Math.min(...below) - T_NEAR) { tPin(m, t); return 0; }
+    tPlace(m, t, n, szh); return 1;
+  }
+  function tidyCover(m, part, isLayout) {
+    const t = tTitle(isLayout ? m.placeholders(part) : m.shapes(part)); if (!t) return 0;
+    let tg = m.geom(t); if (tg[1] === null) return 0;
+    let eb = null;
+    if (isLayout) eb = m.shapes(part).find((x) => shapeName(x.el) === 'Eyebrow') || null;
+    else {
+      const cands = m.shapes(part).filter((x) => {
+        if (x === t || !pyStrip2(textOf(x.el))) return false;
+        const g = m.geom(x); if (g[1] === null || g[3] === null) return false;
+        return g[1] + g[3] <= tg[1] + 182880 && tg[1] - (g[1] + g[3]) < 548640 && Math.abs(g[0] - tg[0]) < 182880;
+      });
+      for (const c of cands) if (!eb || m.geom(c)[1] > m.geom(eb)[1]) eb = c;
+    }
+    if (!eb) return 0;
+    const szh = tSizeH(m, t), L = tL(szh);
+    const tt = parseInt(tBp(m, t, 'tIns', 45720), 10), tb = parseInt(tBp(m, t, 'bIns', 45720), 10);
+    const n = isLayout ? Math.max(1, fdiv(tg[3] - tt - tb + fdiv(L, 2), L))
+      : tLines(textOf(t.el), (tg[2] - parseInt(tBp(m, t, 'lIns', 91440), 10) - parseInt(tBp(m, t, 'rIns', 91440), 10)) / 12700, szh / 100);
+    const bottom = tg[1] + tg[3]; let first;
+    if (tBp(m, t, 'anchor', 't') === 'b') {
+      first = bottom - tb - n * L;
+      if (isLayout && tg[1] < first - tt) { m.setGeom(t, tg[0], first - tt, tg[2], bottom - (first - tt)); tg = m.geom(t); }
+    } else first = tg[1] + tt;
+    const want = first - T_GAP_EB;
+    const ti = parseInt(tBp(m, eb, 'tIns', 45720), 10), bi = parseInt(tBp(m, eb, 'bIns', 45720), 10);
+    const eg = m.geom(eb);
+    if (!isLayout) {
+      if (Math.abs(eg[1] + ti - want) <= 1000) return 0;
+      m.setGeom(eb, eg[0], want - ti, eg[2], eg[3]); return 1;
+    }
+    if (Math.abs(eg[1] + ti - want) <= 1000 && eg[1] + eg[3] <= tg[1]) return 0;
+    const textH = tL(tSizeH(m, eb));
+    const h = Math.max(eg[3], 566928);
+    const top = Math.min(tg[1] - h, want);
+    const nti = want - top, nbi = Math.max(0, h - nti - textH);
+    m.setGeom(eb, eg[0], top, eg[2], h);
+    const b = desc(eb.el, NS_A, 'bodyPr'); b.setAttribute('tIns', String(nti)); b.setAttribute('bIns', String(nbi));
+    return 1;
+  }
+  function tidyAgenda(m, part) {
+    const shapes = m.shapes(part); let changed = 0;
+    for (const h of shapes) {
+      if (shapeName(h.el) === 'Agenda heading' && Math.abs(tFirst(m, h, 1, T_LINE) - T_TOP) > 2000) {
+        tSetBox(m, h, T_TOP - T_PAD, T_LINE + 2 * T_PAD, T_PAD); changed++;
+      }
+    }
+    const itemRe = /^Item\d+_Title$/;
+    let its = shapes.filter((s) => phEl(s.el) && itemRe.test(shapeName(s.el)));
+    if (!its.length && part.kind === 'slide') {
+      const idx = {}; for (const x of m.placeholders(part.layout)) idx[phIdx(x.el)] = shapeName(x.el);
+      its = shapes.filter((s) => phEl(s.el) && itemRe.test(idx[phIdx(s.el)] || ''));
+    }
+    const nums = shapes.filter((s) => isSp(s.el) && !phEl(s.el) && /^\d{1,2}$/.test(pyStrip2(textOf(s.el)) || 'x'));
+    const dashes = shapes.filter((s) => { if (!isA(s.el, NS_P, 'cxnSp')) return false; const g = m.geom(s); return g[3] === 0 && g[2] < 548640; });
+    const G = (s) => m.geom(s);
+    const rows = [];
+    for (const n of nums) {
+      const ng = G(n), nc = ng[1] + fdiv(ng[3], 2);
+      let it = null, itk = 0;
+      for (const i of its) { const ig = G(i); if (ig[0] > ng[0] && Math.abs(ig[1] + fdiv(ig[3], 2) - nc) < 320040) { const k = ig[0] - ng[0]; if (!it || k < itk) { it = i; itk = k; } } }
+      let d = null, dk = 0;
+      for (const x of dashes) { const dg = G(x); const dy = dg[1] - ng[1]; if (dy > 0 && dy < 822960 && Math.abs(dg[0] - ng[0]) < 411480) { if (!d || dy < dk) { d = x; dk = dy; } } }
+      if (it && d) rows.push([n, it, d]);
+    }
+    const cols = {};
+    for (const [n, it] of rows) { const k = fdiv(G(it)[0], 91440); (cols[k] = cols[k] || []).push([G(it)[0], Math.trunc(tW(pyStrip2(textOf(n.el)), 32) * 12700)]); }
+    for (const [n, it, d] of rows) {
+      const ig = G(it), col = cols[fdiv(ig[0], 91440)];
+      const cx = Math.min(...col.map((x) => x[0])) - 182880 - fdiv(Math.max(...col.map((x) => x[1])), 2);
+      const c = ig[1] + fdiv(ig[3], 2);
+      const ng = G(n), dg = G(d);
+      const neu = [cx - fdiv(ng[2], 2), c - fdiv(ng[3], 2), cx - fdiv(dg[2], 2), c + 274320];
+      const bp = desc(n.el, NS_A, 'bodyPr');
+      if (ng[0] === neu[0] && ng[1] === neu[1] && dg[0] === neu[2] && dg[1] === neu[3] && bp.getAttribute('anchor') === 'ctr' && bp.getAttribute('lIns') === '0') continue;
+      m.setGeom(n, neu[0], neu[1], ng[2], ng[3]);
+      for (const k of ['lIns', 'tIns', 'rIns', 'bIns']) bp.setAttribute(k, '0');
+      bp.setAttribute('anchor', 'ctr');
+      for (const p of allDesc(n.el, NS_A, 'p')) {
+        let pp = child(p, NS_A, 'pPr'); if (!pp) { pp = A(p.ownerDocument, 'pPr'); p.insertBefore(pp, p.firstChild); }
+        pp.setAttribute('algn', 'ctr');
+      }
+      m.setGeom(d, neu[2], neu[3], dg[2], dg[3]);
+      changed++;
+    }
+    return changed;
+  }
+  function tidy(m) {
+    let n = 0;
+    for (const lay of m.layouts) {
+      const nm = m.layoutName(lay);
+      if (nm.startsWith('Agenda')) n += tidyAgenda(m, lay); else if (nm.startsWith('Cover')) n += tidyCover(m, lay, true); else n += tidyLayoutTitle(m, lay);
+    }
+    for (const s of m.slides) {
+      const nm = m.layoutName(s.layout);
+      if (nm.startsWith('Agenda')) n += tidyAgenda(m, s); else if (nm.startsWith('Cover')) n += tidyCover(m, s, false); else n += tidySlideTitle(m, s);
+    }
+    return n;
+  }
+
+  async function fixPackage(data, env, opts) {
+    opts = opts || {};
     const zip = await env.JSZip.loadAsync(data); const pkg = new Pkg(zip, env); const m = new Model(pkg); await m.init();
     const isInterim = m.layouts.some((l) => /^(Cards_Numbered|IconRow|Cover_Hero|Divider_Section)/.test(m.layoutName(l)));
     const report = { slides: m.slides.length, layouts: m.layouts.length, interim: isInterim };
@@ -650,18 +837,50 @@
     report.panels = panelize(m);
     report.numbersMade = Object.values(numberize(m)).reduce((a, o) => a + Object.keys(o).length, 0);
     report.numbersFilled = fillNumbers(m);
-    let moved = 0, locked = 0, converted = 0;
+    report.tidied = tidy(m);
+    let moved = 0, locked = 0, converted = 0, footer = 0;
     for (const lay of m.layouts) { moved += untangleTitles(m, lay); moved += fixTree(m, lay); locked += unclickOverlays(m, lay); }
-    for (const s of m.slides) { converted += toTextboxes(m, s); moved += untangleTitles(m, s); moved += fixTree(m, s); locked += unclickOverlays(m, s); }
+    for (const s of m.slides) { converted += toTextboxes(m, s); moved += untangleTitles(m, s); moved += fixTree(m, s); locked += unclickOverlays(m, s); footer += lockFooter(m, s); }
     const grown = {}; let grew = 0;
     for (const lay of m.layouts) { grown[lay.name] = growShort(m, lay); grew += Object.keys(grown[lay.name]).length; }
     for (const s of m.slides) followLayout(m, s, grown[s.layout.name] || {});
     for (const lay of m.layouts) moved += textOverArt(m, lay);
+    report.tidied += tidy(m);   // again, after the box fixes have settled what slides inherit
     for (const mm of m.masters) uniqueIds(mm.root);
     for (const lay of m.layouts) uniqueIds(lay.root);
     for (const s of m.slides) uniqueIds(s.root);
-    Object.assign(report, { moved, overlays: locked, textBoxes: converted, grown: grew });
+    Object.assign(report, { moved, overlays: locked, textBoxes: converted, grown: grew, footerLocked: footer });
+    report.cleaned = opts.clean ? cleanUp(m) : [];
     return { data: await pkg.save(), report };
+  }
+
+  // ---------------------------------------------------------------- clean-up (opt-in); mirrors clean_deck.py
+  const FOOTER_BAND = 0.84, PASTED_FOOTER = /^GROWTH\. ORCHESTRATED\.\s*\d+\s*\/\s*\d+$/i, MEDIA = ['videoFile', 'audioFile', 'quickTimeFile'];
+  function isMedia(el) {
+    if (!isA(el, NS_P, 'pic')) return false;
+    const p = path(el, [[NS_P, 'nvPicPr'], [NS_P, 'nvPr']]); return !!p && kids(p).some((c) => MEDIA.includes(ln(c)));
+  }
+  function descrOf(el) { const c = cNvPr(el); return c ? (c.getAttribute('descr') || '') : ''; }
+  const pyStrip = (t) => t.replace(/^[\s\v]+|[\s\v]+$/g, '');
+  function cleanUp(m) {
+    const W = m.slideW, H = m.slideH, band = FOOTER_BAND * H, log = [];
+    m.slides.forEach((s, k) => {
+      const shapes = m.shapes(s);
+      const own = shapes.filter((sh) => !phEl(sh.el) && descrOf(sh.el) !== ART_TAG);
+      const phs = shapes.filter((sh) => phEl(sh.el));
+      const blank = !own.length && phs.length && !phs.some((sh) => pyStrip(textOf(sh.el)) || desc(sh.el, NS_A, 'blip'));
+      const fullMedia = shapes.some((sh) => { if (!isMedia(sh.el)) return false; const g = m.geom(sh); return (g[2] || 0) >= 0.98 * W && (g[3] || 0) >= 0.98 * H; });
+      for (const sh of shapes) {
+        const el = sh.el, d = descrOf(el), ph = phEl(el), top = m.geom(sh)[1] || 0, txt = pyStrip(textOf(el));
+        let why = null;
+        if (fullMedia && d === ART_TAG) why = 'template footer hidden behind full-screen video';
+        else if (top > band && !ph && d !== ART_TAG && PASTED_FOOTER.test(txt)) why = 'pasted duplicate footer';
+        else if (top > band && isA(el, NS_P, 'pic') && !isMedia(el) && d === '2X logo') why = 'second 2X logo in footer';
+        else if (!blank && ph && attr(ph, 'type') !== 'pic' && d !== NUMBER_TAG && child(el, NS_P, 'txBody') && !txt) why = 'empty text box';
+        if (why) { log.push({ slide: k + 1, name: shapeName(el), why }); el.parentNode.removeChild(el); }
+      }
+    });
+    return log;
   }
 
   const api = { fixPackage };
